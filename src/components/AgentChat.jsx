@@ -12,52 +12,113 @@ function getOrCreateSessionId() {
   return id;
 }
 
-// Render message text — turns URLs into clickable buttons,
-// turns /cart or /crypto-wallet-setup-guide into React Router links
+// Known external links — map keywords to their URLs and labels
+const KNOWN_LINKS = [
+  { pattern: /phantom\.app/gi,      url: "https://phantom.app",       label: "👻 Get Phantom Wallet →" },
+  { pattern: /solflare/gi,          url: "https://solflare.com",      label: "☀️ Solflare Wallet →" },
+  { pattern: /coinbase/gi,          url: "https://www.coinbase.com",  label: "🪙 Coinbase →" },
+];
+
+// Internal route mappings
+const INTERNAL_ROUTES = [
+  // { pattern: /\/crypto-wallet-setup-guide/g, to: "/crypto-wallet-setup-guide", label: "📖 Wallet Setup Guide →" },
+  { pattern: /\/cart/g,                      to: "/cart",                      label: "👀 See Live Demo →" },
+  { pattern: /\/contact-us/g,               to: "/contact-us",               label: "✉️ Contact Us →" },
+];
+
 function MessageContent({ content }) {
-  // Split by URLs first
-  // const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const urlRegex = /(https?:\/\/[^\s)]+)/g;
-  const internalLinkRegex = /\/(cart|crypto-wallet-setup-guide|contact-us)/g;
+  // Build a combined regex that captures all linkable tokens
+  const allPatterns = [
+    // Full URLs (calendly, etc.)
+    { regex: /(https?:\/\/[^\s),]+)/g, type: "url" },
+    // Internal routes
+    ...INTERNAL_ROUTES.map(r => ({ regex: r.pattern, type: "internal", ...r })),
+    // Known external sites
+    ...KNOWN_LINKS.map(l => ({ regex: l.pattern, type: "external", ...l })),
+  ];
 
-  const parts = content.split(urlRegex);
+  // Find all matches with their positions
+  const matches = [];
+  for (const p of allPatterns) {
+    const re = new RegExp(p.regex.source, p.regex.flags);
+    let m;
+    while ((m = re.exec(content)) !== null) {
+      matches.push({ start: m.index, end: m.index + m[0].length, text: m[0], ...p });
+    }
+  }
 
-  return (
-    <span>
-      {parts.map((part, i) => {
-        if (urlRegex.test(part)) {
-          return (
-            <a
-              key={i}
-              href={part}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block mt-2 px-3 py-1.5 bg-[#4b6bff] text-white text-xs font-medium rounded-lg hover:bg-[#3d62ea] transition-colors"
-            >
-              📅 Book a call →
-            </a>
-          );
-        }
-        // Check for internal route mentions
-        if (part.includes("/cart")) {
-          const segments = part.split("/cart");
-          return (
-            <span key={i}>
-              {segments[0]}
-              <Link
-                to="/cart"
-                className="inline-block mt-1 px-3 py-1.5 bg-[#4b6bff] text-white text-xs font-medium rounded-lg hover:bg-[#3d62ea] transition-colors"
-              >
-                👀 See live demo →
-              </Link>
-              {segments[1]}
-            </span>
-          );
-        }
-        return part;
-      })}
-    </span>
-  );
+  // Sort by position, remove overlaps
+  matches.sort((a, b) => a.start - b.start);
+  const filtered = [];
+  let lastEnd = 0;
+  for (const m of matches) {
+    if (m.start >= lastEnd) {
+      filtered.push(m);
+      lastEnd = m.end;
+    }
+  }
+
+  if (filtered.length === 0) return <span>{content}</span>;
+
+  // Build elements
+  const elements = [];
+  let cursor = 0;
+
+  for (let i = 0; i < filtered.length; i++) {
+    const m = filtered[i];
+
+    // Text before this match
+    if (m.start > cursor) {
+      elements.push(<span key={`t${i}`}>{content.slice(cursor, m.start)}</span>);
+    }
+
+    if (m.type === "url") {
+      // Calendly or other full URLs
+      const isCalendly = m.text.includes("calendly");
+      elements.push(
+        <a
+          key={`l${i}`}
+          href={m.text}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block mt-2 px-3 py-1.5 bg-[#4b6bff] text-white text-xs font-medium rounded-lg hover:bg-[#3d62ea] transition-colors"
+        >
+          {isCalendly ? "📅 Book a Call →" : "🔗 Learn More →"}
+        </a>
+      );
+    } else if (m.type === "internal") {
+      elements.push(
+        <Link
+          key={`l${i}`}
+          to={m.to}
+          className="inline-block mt-1 px-3 py-1.5 bg-[#4b6bff] text-white text-xs font-medium rounded-lg hover:bg-[#3d62ea] transition-colors"
+        >
+          {m.label}
+        </Link>
+      );
+    } else if (m.type === "external") {
+      elements.push(
+        <a
+          key={`l${i}`}
+          href={m.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block mt-1 px-3 py-1.5 bg-slate-700 text-white text-xs font-medium rounded-lg hover:bg-slate-800 transition-colors"
+        >
+          {m.label}
+        </a>
+      );
+    }
+
+    cursor = m.end;
+  }
+
+  // Remaining text after last match
+  if (cursor < content.length) {
+    elements.push(<span key="tail">{content.slice(cursor)}</span>);
+  }
+
+  return <span>{elements}</span>;
 }
 
 export default function AgentChat() {
@@ -86,8 +147,16 @@ export default function AgentChat() {
     }
   }, [isOpen]);
 
+  const retryCount = useRef(0);
+  const retryTimer = useRef(null);
+  const MAX_RETRIES = 3;
+
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    // Don't connect if already open or currently connecting
+    if (
+      wsRef.current?.readyState === WebSocket.OPEN ||
+      wsRef.current?.readyState === WebSocket.CONNECTING
+    ) return;
 
     setStatus("connecting");
     const ws = new WebSocket(`${WS_BASE}/${sessionId.current}`);
@@ -95,14 +164,18 @@ export default function AgentChat() {
 
     ws.onopen = () => {
       setStatus("connected");
-      if (messages.length === 0) {
-        setMessages([{
-          id: "welcome",
-          role: "bot",
-          content: "Hey! 👋 I'm the GeniusAct assistant. Ask me anything about crypto payments, fees, or how to get started!",
-          ts: new Date(),
-        }]);
-      }
+      retryCount.current = 0; // reset on success
+      setMessages(prev => {
+        if (prev.length === 0) {
+          return [{
+            id: "welcome",
+            role: "bot",
+            content: "Hey! 👋 I'm the GeniusAct assistant. Ask me anything about crypto payments, fees, or how to get started!",
+            ts: new Date(),
+          }];
+        }
+        return prev;
+      });
     };
 
     ws.onmessage = (e) => {
@@ -128,12 +201,31 @@ export default function AgentChat() {
       }
     };
 
-    ws.onclose = () => setStatus("disconnected");
-    ws.onerror = () => setStatus("error");
-  }, [messages.length, isOpen]);
+    ws.onclose = () => {
+      setStatus("disconnected");
+      // Auto-retry if chat is open and we haven't exceeded retries
+      if (retryCount.current < MAX_RETRIES) {
+        retryCount.current += 1;
+        const delay = Math.min(1000 * retryCount.current, 3000); // 1s, 2s, 3s
+        retryTimer.current = setTimeout(() => {
+          if (wsRef.current?.readyState !== WebSocket.OPEN) {
+            connect();
+          }
+        }, delay);
+      }
+    };
+
+    ws.onerror = () => {
+      // onerror is always followed by onclose, so let onclose handle retry
+      setStatus("error");
+    };
+  }, []); // stable — no deps that change
 
   useEffect(() => {
     if (isOpen) connect();
+    return () => {
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+    };
   }, [isOpen, connect]);
 
   const send = () => {
@@ -167,7 +259,7 @@ export default function AgentChat() {
 
   const statusText = {
     connected:    "Online",
-    connecting:   "GeniusAct AI is loading...",
+    connecting:   "Connecting...",
     disconnected: "Offline",
     error:        "Connection error",
   }[status];
@@ -176,6 +268,8 @@ export default function AgentChat() {
   const suggestions = [
     "How does crypto checkout work?",
     "How much can I save on fees?",
+    "I'm a business — how do I integrate?",
+    "I'm a shopper — how do I pay with crypto?",
     "Show me a demo",
     "Book a call",
   ];
