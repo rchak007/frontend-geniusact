@@ -596,7 +596,7 @@ const GeniusActPage = () => {
                 </div>
                 <div className="flex items-center gap-1.5 xs:gap-2 bg-gray-50 px-2 xs:px-3 py-1 rounded-full">
                   <Check className="w-3 h-3 xs:w-4 xs:h-4 text-gray-400 flex-shrink-0" /> 
-                  <span>1% transaction fees</span>
+                  <span>$0.05 transaction fees</span>
                 </div>
               </div>
 
