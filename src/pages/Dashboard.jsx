@@ -330,7 +330,7 @@ const FeesComparison = () => {
         Tired of Paying High Transaction Fees?
       </h2>
       <p className="text-indigo-100 max-w-2xl text-xs sm:text-sm md:text-base opacity-90">
-        Traditional payment processors charge 2.9% + $0.30 per transaction. With stablecoins on Solana, fees are less than a cent per payment.
+        Traditional payment processors charge 2.9% + $0.30 per transaction. With Genius Act on Solana, you pay a flat $0.05 per payment — a fixed amount, however large the order.
       </p>
     </div>
 
@@ -355,7 +355,7 @@ const FeesComparison = () => {
         {/* Genius Act Bar */}
         <div className="flex-1 flex flex-col items-center justify-end h-full">
           <div className="w-full bg-white rounded-t-md flex items-center justify-center relative h-[25%] sm:h-[30%] min-h-[45px] sm:min-h-[55px] md:min-h-[65px]">
-            <span className="text-sm sm:text-base md:text-lg font-bold text-black">0.01%</span>
+            <span className="text-sm sm:text-base md:text-lg font-bold text-black">$0.05</span>
           </div>
         </div>
 
@@ -386,7 +386,7 @@ const FeesComparison = () => {
 
       {/* Percentage Labels at Bottom */}
       <div className="flex justify-between mt-3 sm:mt-5 text-xs sm:text-sm md:text-base text-indigo-200">
-        <div className="flex-1 text-center">0.01% fee</div>
+        <div className="flex-1 text-center">$0.05 flat fee</div>
         <div className="flex-1 text-center">2.9% + $0.30 fee</div>
         <div className="flex-1 text-center">2.9% + $0.30 fee</div>
       </div>
